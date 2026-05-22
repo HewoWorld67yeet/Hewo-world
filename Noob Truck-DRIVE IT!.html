@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hewo world bus driver</title>
+    <!-- Tailwind CSS for modern dashboard overlay -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for clean dashboard icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            background-color: #0b0914;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        /* Mobile control button styling to avoid highlighting */
+        .btn-control {
+            -webkit-tap-highlight-color: transparent;
+        }
+    </style>
+</head>
+<body class="relative">
+
+    <!-- Game Canvas -->
+    <div id="canvas-container" class="absolute inset-0 z-0"></div>
+
+    <!-- UI Overlay -->
+    <div class="absolute inset-0 pointer-events-none z-10 flex flex-col justify-between p-4 md:p-6">
+        
+        <!-- Top Stats Bar -->
+        <div class="flex justify-between items-start w-full">
+            <!-- Title and Soft-Body Status -->
+            <div class="bg-slate-950/85 backdrop-blur-md text-white px-4 py-3 rounded-xl border border-slate-800 shadow-2xl pointer-events-auto max-w-xs">
+                <h1 class="font-bold text-lg text-yellow-400 tracking-wide flex items-center gap-2">
+                    <i class="fa-solid fa-bus"></i> METROPOLIS 3D
+                </h1>
+                <p class="text-xs text-slate-400 mt-1 font-medium">Soft-Body City Driving Simulator</p>
+                <div class="mt-2.5">
+                    <div class="flex justify-between text-xs font-semibold mb-1">
+                        <span>Chassis Damage</span>
+                        <span id="damage-text" class="text-green-400">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                        <div id="damage-bar" class="bg-gradient-to-r from-green-500 to-emerald-400 h-full w-0 transition-all duration-300"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls Guide (Hidden on mobile) -->
+            <div class="hidden md:flex flex-col gap-1.5 bg-slate-950/85 backdrop-blur-md text-white px-4 py-3 rounded-xl border border-slate-800 shadow-2xl text-xs pointer-events-auto">
+                <span class="font-bold text-slate-300 border-b border-slate-800 pb-1 mb-1"><i class="fa-solid fa-gamepad mr-1"></i> CONTROLS GUIDE</span>
+                <span class="flex justify-between gap-8"><span>Accelerate / Reverse:</span> <span class="text-yellow-400 font-mono">W / S (or ↑ / ↓)</span></span>
+                <span class="flex justify-between gap-8"><span>Steer Wheels:</span> <span class="text-yellow-400 font-mono">A / D (or ← / →)</span></span>
+                <span class="flex justify-between gap-8"><span>Reset / Flip Bus:</span> <span class="text-yellow-400 font-mono">R Key</span></span>
+                <span class="flex justify-between gap-8"><span>Handbrake Drift:</span> <span class="text-yellow-400 font-mono">Space</span></span>
+                <span class="flex justify-between gap-8"><span>Cycle Cameras:</span> <span class="text-yellow-400 font-mono">C Key</span></span>
+            </div>
+        </div>
+
+        <!-- Center Notification (Pop-up indicator on collision) -->
+        <div class="self-center flex flex-col items-center justify-center">
+            <div id="impact-alert" class="bg-red-600/90 text-white font-bold px-6 py-2.5 rounded-full shadow-2xl border border-red-500 transform scale-0 transition-all duration-150 text-sm md:text-base flex items-center gap-2">
+                <i class="fa-solid fa-triangle-exclamation animate-bounce"></i> CRASH DEFORMATION APPLIED!
+            </div>
+        </div>
+
+        <!-- Bottom Controls & Telemetry Dashboard -->
+        <div class="flex flex-col md:flex-row justify-between items-center gap-4 w-full">
+            
+            <!-- Dashboard Dial / Status Info -->
+            <div class="bg-slate-950/85 backdrop-blur-md text-white px-5 py-3 rounded-2xl border border-slate-800 shadow-2xl pointer-events-auto flex items-center gap-6">
+                <!-- Speedometer -->
+                <div class="flex flex-col items-center justify-center">
+                    <span class="text-2xl md:text-3xl font-black font-mono tracking-tight text-yellow-300" id="speedometer">0</span>
+                    <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Speed km/h</span>
+                </div>
+                <div class="h-10 w-[1px] bg-slate-800"></div>
+                <!-- Gear -->
+                <div class="flex flex-col items-center justify-center">
+                    <span class="text-xl md:text-2xl font-bold font-mono text-cyan-400" id="gear-indicator">D</span>
+                    <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Gear</span>
+                </div>
+                <div class="h-10 w-[1px] bg-slate-800"></div>
+                <!-- Action Buttons -->
+                <div class="flex gap-2">
+                    <button id="btn-repair" class="pointer-events-auto btn-control bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white px-3 py-2.5 rounded-xl transition duration-150 flex items-center justify-center shadow-lg border border-blue-500" title="Repair Bus">
+                        <i class="fa-solid fa-wrench text-sm md:text-base mr-1.5"></i> Repair
+                    </button>
+                    <button id="btn-reset" class="pointer-events-auto btn-control bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white px-3 py-2.5 rounded-xl transition duration-150 flex items-center justify-center shadow-lg border border-amber-500" title="Flip / Unstick Bus">
+                        <i class="fa-solid fa-arrows-spin text-sm md:text-base mr-1.5"></i> Unstick
+                    </button>
+                    <button id="btn-camera" class="pointer-events-auto btn-control bg-slate-700 hover:bg-slate-600 active:bg-slate-800 text-white px-3 py-2.5 rounded-xl transition duration-150 flex items-center justify-center shadow-lg border border-slate-600" title="Toggle Camera Modes">
+                        <i class="fa-solid fa-camera text-sm md:text-base mr-1.5"></i> <span id="camera-text">Chase Back</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Mobile Touch Layout (Always visible but optimized for quick tap) -->
+            <div class="flex gap-4 pointer-events-auto w-full md:w-auto max-w-sm">
+                <!-- Left steering zone -->
+                <div class="flex gap-2 w-1/2">
+                    <button id="btn-left" class="btn-control flex-1 h-14 bg-slate-800/80 active:bg-yellow-500/80 backdrop-blur-md text-white active:text-slate-950 rounded-xl border border-slate-700 flex items-center justify-center transition duration-100 text-xl shadow-xl">
+                        <i class="fa-solid fa-caret-left"></i>
+                    </button>
+                    <button id="btn-right" class="btn-control flex-1 h-14 bg-slate-800/80 active:bg-yellow-500/80 backdrop-blur-md text-white active:text-slate-950 rounded-xl border border-slate-700 flex items-center justify-center transition duration-100 text-xl shadow-xl">
+                        <i class="fa-solid fa-caret-right"></i>
+                    </button>
+                </div>
+                <!-- Right drive/brake zone -->
+                <div class="flex gap-2 w-1/2">
+                    <button id="btn-reverse" class="btn-control flex-1 h-14 bg-slate-800/80 active:bg-red-500/80 backdrop-blur-md text-white active:text-white rounded-xl border border-slate-700 flex items-center justify-center transition duration-100 text-lg shadow-xl font-bold">
+                        REV
+                    </button>
+                    <button id="btn-drive" class="btn-control flex-1 h-14 bg-slate-800/80 active:bg-green-500/80 backdrop-blur-md text-white active:text-slate-950 rounded-xl border border-slate-700 flex items-center justify-center transition duration-100 text-xl shadow-xl">
+                        <i class="fa-solid fa-gas-pump"></i>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Main Game Logic Script -->
+    <script>
+        // --- GAME PARAMETERS ---
+        const TERRAIN_SIZE = 140;
+        const TERRAIN_SEGMENTS = 64;
+        const BOULDER_COUNT = 30;
+        const BUS_WIDTH = 2.4;
+        const BUS_HEIGHT = 2.6;
+        const BUS_LENGTH = 7.0;
+
+        // --- GLOBAL VARIABLES & STATE ---
+        let scene, camera, renderer;
+        let clock;
+        
+        // Physics / Vehicle Variables
+        let busGroup; // Container holding bus body & wheels
+        let busBodyMesh; // The deformable mesh
+        let originalVertices = []; // Untouched model coordinate cache
+        let deformedVertices = []; // Currently deformed coordinate offset state
+        let chassisIntegrity = 1.0; // 1.0 is pristine, 0.0 is total wreckage
+
+        // Dynamic State
+        let position = new THREE.Vector3(0, 0, 0); // Reset position (Calculated properly in init)
+        let velocity = new THREE.Vector3(0, 0, 0);
+        let rotationY = Math.PI; // Face South initially to look down the main street
+        let pitch = 0;
+        let roll = 0;
+        let steeringAngle = 0;
+        let wheelRotation = 0;
+
+        // Anti-stuck State Timers
+        let stuckTimer = 0;
+        let upsideDownTimer = 0;
+
+        // Visual Components
+        let wheels = [];
+        let suspensionSprings = [];
+        let particleSystems = [];
+        let terrainMesh;
+        let boulders = [];
+        let cityBuildings = [];
+
+        // Camera mode (0 = Chase Back, 1 = Chase Front, 2 = Orbit)
+        let cameraMode = 0;
+        let orbitAngleX = Math.PI / 4;
+        let orbitAngleY = 0.4;
+        let orbitRadius = 16;
+        let isMouseDown = false;
+        let previousMousePosition = { x: 0, y: 0 };
+
+        // Controller input tracking
+        const input = {
+            forward: false,
+            backward: false,
+            left: false,
+            right: false,
+            handbrake: false
+        };
+
+        // Custom Sound effects using Web Audio API (Fully procedural synthesizers)
+        let audioCtx = null;
+        let engineOsc = null;
+        let engineGain = null;
+
+        // --- DYNAMIC HEIGHT & SMOOTH CITY ROADS PLAN ---
+        // Paved roads must sit at flat grade (y = 0)
+        function getRoadFactor(x, z) {
+            // Main N-S highway at x = 0
+            const distNS = Math.abs(x);
+            // Main E-W highway at z = 0
+            const distEW = Math.abs(z);
+            // Ring road around the central city blocks
+            const radius = Math.sqrt(x*x + z*z);
+            const distRing = Math.abs(radius - 38);
+
+            const minDist = Math.min(distNS, distEW, distRing);
+
+            if (minDist < 3.2) {
+                return 0.0; // Paved, flat road bed
+            } else if (minDist < 5.5) {
+                // Smooth road shoulder transition
+                return (minDist - 3.2) / 2.3;
+            }
+            return 1.0; // Regular rocky mountain peaks
+        }
+
+        function getHeight(x, z) {
+            // Keep center area around spawn completely flat for the crossroad
+            const distFromCenter = Math.sqrt(x*x + z*z);
+            let flatFactor = Math.min(1.0, distFromCenter / 12.0);
+            
+            // Build rocky terrain height layered via frequency waves
+            let y = Math.sin(x * 0.07) * Math.cos(z * 0.07) * 5.0;
+            y += Math.sin(x * 0.18) * Math.sin(z * 0.18) * 1.8;
+            y += Math.cos(x * 0.45) * Math.sin(z * 0.45) * 0.5;
+            
+            y *= flatFactor;
+            
+            // Flatten along the city road layout
+            const roadInfluence = getRoadFactor(x, z);
+            return y * roadInfluence;
+        }
+
+        // Initialize Audio System
+        function initAudio() {
+            if (audioCtx) return; // Already running
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+                
+                // Set up low pitch engine rumbling oscillator
+                engineOsc = audioCtx.createOscillator();
+                engineGain = audioCtx.createGain();
+                
+                engineOsc.type = 'sawtooth';
+                engineOsc.frequency.setValueAtTime(35, audioCtx.currentTime); // low idle
+                
+                // Add resonant lowpass filter for diesel engine texture
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(140, audioCtx.currentTime);
+                filter.Q.setValueAtTime(4, audioCtx.currentTime);
+
+                engineOsc.connect(filter);
+                filter.connect(engineGain);
+                engineGain.connect(audioCtx.destination);
+                
+                engineGain.gain.setValueAtTime(0.06, audioCtx.currentTime);
+                engineOsc.start();
+            } catch (e) {
+                console.warn("Web Audio API not supported or locked.");
+            }
+        }
+
+        function playCollisionSound(volume = 0.5) {
+            if (!audioCtx) initAudio();
+            if (!audioCtx) return;
+            
+            // Generate metallic impact crunch
+            const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.3, audioCtx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < noiseBuffer.length; i++) {
+                output[i] = Math.random() * 2 - 1;
+            }
+            
+            const whiteNoise = audioCtx.createBufferSource();
+            whiteNoise.buffer = noiseBuffer;
+            
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(120, audioCtx.currentTime);
+            filter.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.3);
+            
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(volume * 0.4, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.28);
+            
+            whiteNoise.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            whiteNoise.start();
+        }
+
+        function updateEngineSound(speed) {
+            if (!engineOsc || !engineGain) return;
+            const targetPitch = 35 + (speed * 1.5);
+            engineOsc.frequency.setTargetAtTime(targetPitch, audioCtx.currentTime, 0.1);
+            const targetVol = 0.05 + (speed * 0.002);
+            engineGain.gain.setTargetAtTime(Math.min(0.15, targetVol), audioCtx.currentTime, 0.1);
+        }
+
+        // --- WINDOW LOAD & BOOTSTRAP ---
+        window.onload = function() {
+            initGame();
+            animate();
+        };
+
+        function initGame() {
+            const container = document.getElementById('canvas-container');
+            
+            clock = new THREE.Clock();
+
+            // Scene setup - Sunset/Dusk Atmosphere
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x13111c); 
+            scene.fog = new THREE.FogExp2(0x13111c, 0.014);
+
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.1;
+            container.appendChild(renderer.domElement);
+
+            // Lighting Setup - Evening ambient glow
+            const ambientLight = new THREE.AmbientLight(0x2d2b45, 0.7);
+            scene.add(ambientLight);
+
+            // Sunset direction light
+            const sunLight = new THREE.DirectionalLight(0xff7744, 1.2);
+            sunLight.position.set(-60, 30, -50);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 1024;
+            sunLight.shadow.mapSize.height = 1024;
+            sunLight.shadow.camera.near = 0.5;
+            sunLight.shadow.camera.far = 250;
+            const d = 60;
+            sunLight.shadow.camera.left = -d;
+            sunLight.shadow.camera.right = d;
+            sunLight.shadow.camera.top = d;
+            sunLight.shadow.camera.bottom = -d;
+            sunLight.shadow.bias = -0.0005;
+            scene.add(sunLight);
+
+            // Blue ambient skylight fill
+            const fillLight = new THREE.DirectionalLight(0x4466aa, 0.6);
+            fillLight.position.set(50, 40, 50);
+            scene.add(fillLight);
+
+            // Create Terrain
+            createRockyTerrain();
+
+            // Create Visual City Paved Road Network overlay
+            createAsphaltRoads();
+
+            // Create Bus Group and Chassis Model (Pin to exact ground level on frame 1)
+            const startGroundY = getHeight(0, 15);
+            position.set(0, startGroundY + 1.25, 15); // Spawn bus slightly up the North road facing crossroad
+            createSoftBodyBus();
+
+            // Spawn City Skyscrapers & Houses
+            spawnProceduralCity();
+
+            // Create Boulders on the terrain
+            spawnRockyBoulders();
+
+            // Input Event Hookups
+            setupInputListeners();
+
+            // Handle UI clicks
+            document.getElementById('btn-repair').addEventListener('click', () => {
+                restoreChassis();
+            });
+            document.getElementById('btn-reset').addEventListener('click', () => {
+                resetBusPosition();
+            });
+            document.getElementById('btn-camera').addEventListener('click', () => {
+                cycleCameraMode();
+            });
+
+            // Handle Resizing
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        // --- PROC-TERRAIN GENERATION ---
+        function createRockyTerrain() {
+            const geometry = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, TERRAIN_SEGMENTS, TERRAIN_SEGMENTS);
+            geometry.rotateX(-Math.PI / 2); // Make it horizontal
+
+            const vertices = geometry.attributes.position.array;
+            for (let i = 0; i < vertices.length; i += 3) {
+                const x = vertices[i];
+                const z = vertices[i + 2];
+                vertices[i + 1] = getHeight(x, z);
+            }
+            
+            geometry.computeVertexNormals();
+
+            // Rock material with sunset highlights
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x423d38, // Mountain charcoal
+                roughness: 0.95,
+                metalness: 0.1,
+                flatShading: true 
+            });
+
+            terrainMesh = new THREE.Mesh(geometry, material);
+            terrainMesh.receiveShadow = true;
+            scene.add(terrainMesh);
+        }
+
+        // --- PAVED ROAD ASYPHALT DRAWING ---
+        function createAsphaltRoads() {
+            const roadMat = new THREE.MeshStandardMaterial({
+                color: 0x1f1e24, // dark asphalt
+                roughness: 0.7,
+                metalness: 0.1
+            });
+
+            const yellowLineMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+
+            // 1. North-South Road Plane
+            const nsGeo = new THREE.PlaneGeometry(6.0, TERRAIN_SIZE);
+            nsGeo.rotateX(-Math.PI / 2);
+            const nsRoad = new THREE.Mesh(nsGeo, roadMat);
+            nsRoad.position.set(0, 0.015, 0); // Sit slightly above terrain to prevent depth fighting
+            nsRoad.receiveShadow = true;
+            scene.add(nsRoad);
+
+            // 2. East-West Road Plane
+            const ewGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, 6.0);
+            ewGeo.rotateX(-Math.PI / 2);
+            const ewRoad = new THREE.Mesh(ewGeo, roadMat);
+            ewRoad.position.set(0, 0.015, 0);
+            ewRoad.receiveShadow = true;
+            scene.add(ewRoad);
+
+            // 3. Ring Road Ring Geometry
+            const ringGeo = new THREE.RingGeometry(35.0, 41.0, 64);
+            ringGeo.rotateX(-Math.PI / 2);
+            const ringRoad = new THREE.Mesh(ringGeo, roadMat);
+            ringRoad.position.set(0, 0.012, 0);
+            ringRoad.receiveShadow = true;
+            scene.add(ringRoad);
+
+            // 4. Yellow Dashed Centerlines (Main Crossroad Lines)
+            for (let i = -TERRAIN_SIZE / 2; i < TERRAIN_SIZE / 2; i += 4) {
+                if (Math.abs(i) < 4.0) continue; // Leave central intersection clean
+                
+                // N-S Dashes
+                const dashNSGeo = new THREE.PlaneGeometry(0.12, 1.5);
+                dashNSGeo.rotateX(-Math.PI / 2);
+                const dashNS = new THREE.Mesh(dashNSGeo, yellowLineMat);
+                dashNS.position.set(0, 0.02, i);
+                scene.add(dashNS);
+
+                // E-W Dashes
+                const dashEWGeo = new THREE.PlaneGeometry(1.5, 0.12);
+                dashEWGeo.rotateX(-Math.PI / 2);
+                const dashEW = new THREE.Mesh(dashEWGeo, yellowLineMat);
+                dashEW.position.set(i, 0.02, 0);
+                scene.add(dashEW);
+            }
+        }
+
+        // --- PROCEDURAL CITY SKYSCRAPERS & STREETLIGHTS ---
+        function spawnProceduralCity() {
+            // Colors for buildings
+            const buildingColors = [0x2f384f, 0x1e2a38, 0x3d3548, 0x243336, 0x3d2c2e, 0x1e1e24];
+            
+            // Window glowing textures
+            const windowMatOn = new THREE.MeshBasicMaterial({ color: 0xffea9e });
+            const windowMatOff = new THREE.MeshBasicMaterial({ color: 0x22222b });
+
+            // Place buildings in blocks between crossroads (keeping roads empty!)
+            // We define blocks: (X from 10 to 30, Z from 10 to 30) etc.
+            const blocks = [
+                { minX: 10, maxX: 26, minZ: 10, maxZ: 26 },   // Block NE
+                { minX: -26, maxX: -10, minZ: 10, maxZ: 26 }, // Block NW
+                { minX: -26, maxX: -10, minZ: -26, maxZ: -10 },// Block SW
+                { minX: 10, maxX: 26, minZ: -26, maxZ: -10 }  // Block SE
+            ];
+
+            blocks.forEach((b, blockIdx) => {
+                // Generate 5 buildings per block
+                for (let i = 0; i < 5; i++) {
+                    const w = 4.0 + Math.random() * 3.5;
+                    const d = 4.0 + Math.random() * 3.5;
+                    const h = 12.0 + Math.random() * 20.0; // Dynamic skyscraper height
+
+                    const bx = b.minX + Math.random() * (b.maxX - b.minX - w);
+                    const bz = b.minZ + Math.random() * (b.maxZ - b.minZ - d);
+                    const by = h / 2 + getHeight(bx, bz) - 0.5; // Offset to sit flush
+
+                    const buildGeo = new THREE.BoxGeometry(w, h, d);
+                    const randColor = buildingColors[Math.floor(Math.random() * buildingColors.length)];
+                    const buildMat = new THREE.MeshStandardMaterial({
+                        color: randColor,
+                        roughness: 0.6,
+                        metalness: 0.5
+                    });
+
+                    const buildingMesh = new THREE.Mesh(buildGeo, buildMat);
+                    buildingMesh.position.set(bx, by, bz);
+                    buildingMesh.castShadow = true;
+                    buildingMesh.receiveShadow = true;
+                    scene.add(buildingMesh);
+
+                    // Add decorative glowing windows on skyscraper sides
+                    addGlowingWindows(buildingMesh, w, h, d, windowMatOn, windowMatOff);
+
+                    // Push to collision tracking list
+                    const center = new THREE.Vector3(bx, by, bz);
+                    const sizeVec = new THREE.Vector3(w, h, d);
+                    const box = new THREE.Box3().setFromObject(buildingMesh);
+                    
+                    cityBuildings.push({
+                        mesh: buildingMesh,
+                        center: center,
+                        radius: Math.max(w, d) * 0.7,
+                        box: box
+                    });
+                }
+            });
+
+            // Add simple warm streetlights along the roads
+            const streetLightGeo = new THREE.CylinderGeometry(0.06, 0.06, 4.0, 8);
+            const streetLightMat = new THREE.MeshStandardMaterial({ color: 0x33333b, metalness: 0.8 });
+            const glassBulbMat = new THREE.MeshBasicMaterial({ color: 0xffe680 });
+            
+            // Light cone visualizer (Semi-transparent additive cylinder)
+            const coneGeo = new THREE.ConeGeometry(2.5, 5.0, 16, 1, true);
+            coneGeo.translate(0, -2.5, 0); // Shift origin to top of cone
+            const coneMat = new THREE.MeshBasicMaterial({
+                color: 0xffea9e,
+                transparent: true,
+                opacity: 0.15,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide
+            });
+
+            const lampOffsets = [
+                { x: 4.5, z: 12 }, { x: -4.5, z: 12 },
+                { x: 4.5, z: -12 }, { x: -4.5, z: -12 },
+                { x: 12, z: 4.5 }, { x: -12, z: 4.5 },
+                { x: 12, z: -4.5 }, { x: -12, z: -4.5 }
+            ];
+
+            lampOffsets.forEach(pos => {
+                const pole = new THREE.Mesh(streetLightGeo, streetLightMat);
+                pole.position.set(pos.x, 2.0, pos.z);
+                pole.castShadow = true;
+                scene.add(pole);
+
+                const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), glassBulbMat);
+                bulb.position.set(pos.x, 4.0, pos.z);
+                scene.add(bulb);
+
+                const glowCone = new THREE.Mesh(coneGeo, coneMat);
+                glowCone.position.set(pos.x, 4.0, pos.z);
+                scene.add(glowCone);
+            });
+        }
+
+        function addGlowingWindows(building, w, h, d, matOn, matOff) {
+            // Rows & columns of windows
+            const rows = Math.floor(h / 2.0) - 1;
+            const cols = Math.floor(w / 1.2);
+            if (rows < 2 || cols < 1) return;
+
+            const winGeo = new THREE.PlaneGeometry(0.35, 0.45);
+
+            // Front side (facing +Z)
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const isLit = Math.random() > 0.4;
+                    const win = new THREE.Mesh(winGeo, isLit ? matOn : matOff);
+                    // Position relative to building local coordinates
+                    const lx = -w/2 + (c + 0.5) * (w / cols);
+                    const ly = -h/2 + 1.5 + r * 1.8;
+                    const lz = d/2 + 0.01;
+                    win.position.set(lx, ly, lz);
+                    building.add(win);
+                }
+            }
+
+            // Back side (facing -Z)
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const isLit = Math.random() > 0.4;
+                    const win = new THREE.Mesh(winGeo, isLit ? matOn : matOff);
+                    const lx = -w/2 + (c + 0.5) * (w / cols);
+                    const ly = -h/2 + 1.5 + r * 1.8;
+                    const lz = -d/2 - 0.01;
+                    win.position.set(lx, ly, lz);
+                    win.rotation.y = Math.PI;
+                    building.add(win);
+                }
+            }
+        }
+
+        // --- BOULDER SPAWNER ---
+        function spawnRockyBoulders() {
+            const stoneMaterial = new THREE.MeshStandardMaterial({
+                color: 0x3d3936,
+                roughness: 0.95,
+                metalness: 0.1,
+                flatShading: true
+            });
+
+            for (let i = 0; i < BOULDER_COUNT; i++) {
+                let bx = (Math.random() - 0.5) * (TERRAIN_SIZE - 20);
+                let bz = (Math.random() - 0.5) * (TERRAIN_SIZE - 20);
+                
+                // Reposition if spawned on paved asphalt paths
+                const roadFactor = getRoadFactor(bx, bz);
+                if (roadFactor < 0.8) {
+                    // Push boulder far away from roads
+                    bx += 16 * Math.sign(bx || 1);
+                    bz += 16 * Math.sign(bz || 1);
+                }
+
+                const by = getHeight(bx, bz) - 0.2;
+                const size = 1.2 + Math.random() * 3.0;
+
+                const rockGeo = new THREE.DodecahedronGeometry(size, 1);
+                
+                const pos = rockGeo.attributes.position;
+                for (let k = 0; k < pos.count; k++) {
+                    const vx = pos.getX(k);
+                    const vy = pos.getY(k);
+                    const vz = pos.getZ(k);
+                    pos.setXYZ(
+                        k,
+                        vx + (Math.random() - 0.5) * 0.22 * size,
+                        vy + (Math.random() - 0.5) * 0.22 * size,
+                        vz + (Math.random() - 0.5) * 0.22 * size
+                    );
+                }
+                rockGeo.computeVertexNormals();
+
+                const rockMesh = new THREE.Mesh(rockGeo, stoneMaterial);
+                rockMesh.position.set(bx, by, bz);
+                rockMesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+                rockMesh.castShadow = true;
+                rockMesh.receiveShadow = true;
+
+                scene.add(rockMesh);
+                boulders.push({
+                    mesh: rockMesh,
+                    position: new THREE.Vector3(bx, by, bz),
+                    radius: size * 0.9
+                });
+            }
+        }
+
+        // --- DEFORMABLE BUS GENERATION ---
+        function createSoftBodyBus() {
+            busGroup = new THREE.Group();
+            busGroup.position.copy(position);
+            scene.add(busGroup);
+
+            // Constructing highly segmented bus chassis
+            const bodyGeo = new THREE.BoxGeometry(BUS_WIDTH, BUS_HEIGHT, BUS_LENGTH, 8, 8, 16);
+            
+            // Setup shiny school bus yellow paint
+            const bodyMat = new THREE.MeshStandardMaterial({
+                color: 0xfcc203,
+                roughness: 0.25,
+                metalness: 0.35,
+                flatShading: false
+            });
+
+            busBodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+            busBodyMesh.castShadow = true;
+            busBodyMesh.receiveShadow = true;
+            busGroup.add(busBodyMesh);
+
+            // Save original mesh coordinates
+            const posAttr = bodyGeo.attributes.position;
+            for (let i = 0; i < posAttr.count; i++) {
+                const vec = new THREE.Vector3(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+                originalVertices.push(vec.clone());
+                deformedVertices.push(vec.clone());
+            }
+
+            // Procedurally add windshield, windows, trim, headlights
+            addBusDecorations();
+
+            // Initialize wheels
+            addBusWheels();
+        }
+
+        function addBusDecorations() {
+            const glassMat = new THREE.MeshStandardMaterial({
+                color: 0x141f2d,
+                roughness: 0.1,
+                metalness: 0.9,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            // Rear windshield
+            const rearWindGeo = new THREE.PlaneGeometry(1.8, 1.1);
+            const rearWind = new THREE.Mesh(rearWindGeo, glassMat);
+            rearWind.position.set(0, 0.4, -BUS_LENGTH/2 - 0.01);
+            rearWind.rotation.y = Math.PI;
+            busGroup.add(rearWind);
+
+            // Side windows row (Left & Right)
+            const sideWindowGeo = new THREE.PlaneGeometry(0.8, 0.6);
+            for (let i = -3; i <= 3; i++) {
+                if (i === 0) continue; // skip center pillar
+                // Left windows
+                const winL = new THREE.Mesh(sideWindowGeo, glassMat);
+                winL.position.set(-BUS_WIDTH/2 - 0.01, 0.4, i * 0.85);
+                winL.rotation.y = -Math.PI / 2;
+                busGroup.add(winL);
+
+                // Right windows
+                const winR = new THREE.Mesh(sideWindowGeo, glassMat);
+                winR.position.set(BUS_WIDTH/2 + 0.01, 0.4, i * 0.85);
+                winR.rotation.y = Math.PI / 2;
+                busGroup.add(winR);
+            }
+
+            // Bright glowing headlights
+            const lightGeo = new THREE.CylinderGeometry(0.16, 0.16, 0.05, 12);
+            lightGeo.rotateX(Math.PI / 2);
+            const lightMat = new THREE.MeshBasicMaterial({ color: 0xfffde8 });
+            
+            const hlLeft = new THREE.Mesh(lightGeo, lightMat);
+            hlLeft.position.set(-0.9, -0.4, BUS_LENGTH/2 + 0.01);
+            const hlRight = new THREE.Mesh(lightGeo, lightMat);
+            hlRight.position.set(0.9, -0.4, BUS_LENGTH/2 + 0.01);
+            busGroup.add(hlLeft);
+            busGroup.add(hlRight);
+
+            // Black Radiator Grill
+            const grillGeo = new THREE.BoxGeometry(1.4, 0.6, 0.1);
+            const grillMat = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.8 });
+            const grill = new THREE.Mesh(grillGeo, grillMat);
+            grill.position.set(0, -0.4, BUS_LENGTH/2 + 0.05);
+            busGroup.add(grill);
+        }
+
+        function addBusWheels() {
+            const wheelGeo = new THREE.CylinderGeometry(0.8, 0.8, 0.6, 18);
+            wheelGeo.rotateZ(Math.PI / 2); // align horizontally
+            
+            const tireMat = new THREE.MeshStandardMaterial({
+                color: 0x18181a,
+                roughness: 0.9,
+                metalness: 0.0
+            });
+
+            const hubcapGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.62, 12);
+            hubcapGeo.rotateZ(Math.PI / 2);
+            const hubcapMat = new THREE.MeshStandardMaterial({
+                color: 0xdddddd,
+                metalness: 0.85,
+                roughness: 0.15
+            });
+
+            // Position offsets relative to bus center: [x, y, z]
+            const wheelOffsets = [
+                { x: -BUS_WIDTH/2 - 0.1, y: -BUS_HEIGHT/2, z: BUS_LENGTH/2 - 1.4, isFront: true }, // Front Left
+                { x: BUS_WIDTH/2 + 0.1, y: -BUS_HEIGHT/2, z: BUS_LENGTH/2 - 1.4, isFront: true },  // Front Right
+                { x: -BUS_WIDTH/2 - 0.1, y: -BUS_HEIGHT/2, z: -BUS_LENGTH/2 + 1.4, isFront: false }, // Rear Left
+                { x: BUS_WIDTH/2 + 0.1, y: -BUS_HEIGHT/2, z: -BUS_LENGTH/2 + 1.4, isFront: false }  // Rear Right
+            ];
+
+            wheelOffsets.forEach((offset, idx) => {
+                const wheelContainer = new THREE.Group();
+                wheelContainer.position.set(offset.x, offset.y, offset.z);
+
+                const tire = new THREE.Mesh(wheelGeo, tireMat);
+                tire.castShadow = true;
+                const hub = new THREE.Mesh(hubcapGeo, hubcapMat);
+                
+                wheelContainer.add(tire);
+                wheelContainer.add(hub);
+                busGroup.add(wheelContainer);
+
+                wheels.push({
+                    group: wheelContainer,
+                    initialOffset: new THREE.Vector3(offset.x, offset.y, offset.z),
+                    isFront: offset.isFront,
+                    steeringSign: offset.x < 0 ? 1 : 1
+                });
+
+                // Spring Geometry
+                const springGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.0, 6);
+                const springMat = new THREE.MeshStandardMaterial({ color: 0x55555d, metalness: 0.7 });
+                const spring = new THREE.Mesh(springGeo, springMat);
+                spring.position.set(offset.x * 0.85, offset.y + 0.5, offset.z);
+                busGroup.add(spring);
+                suspensionSprings.push(spring);
+            });
+        }
+
+        // --- CONTROLLER & EVENT LISTENERS ---
+        function setupInputListeners() {
+            window.addEventListener('keydown', (e) => {
+                initAudio();
+                switch(e.key.toLowerCase()) {
+                    case 'w':
+                    case 'arrowup':
+                        input.forward = true;
+                        break;
+                    case 's':
+                    case 'arrowdown':
+                        input.backward = true;
+                        break;
+                    case 'a':
+                    case 'arrowleft':
+                        input.left = true;
+                        break;
+                    case 'd':
+                    case 'arrowright':
+                        input.right = true;
+                        break;
+                    case ' ':
+                        input.handbrake = true;
+                        break;
+                    case 'r':
+                        resetBusPosition();
+                        break;
+                    case 'c':
+                        cycleCameraMode();
+                        break;
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                switch(e.key.toLowerCase()) {
+                    case 'w':
+                    case 'arrowup':
+                        input.forward = false;
+                        break;
+                    case 's':
+                    case 'arrowdown':
+                        input.backward = false;
+                        break;
+                    case 'a':
+                    case 'arrowleft':
+                        input.left = false;
+                        break;
+                    case 'd':
+                    case 'arrowright':
+                        input.right = false;
+                        break;
+                    case ' ':
+                        input.handbrake = false;
+                        break;
+                }
+            });
+
+            // Mobile Interfaces
+            const touchControls = [
+                { id: 'btn-left', key: 'left' },
+                { id: 'btn-right', key: 'right' },
+                { id: 'btn-drive', key: 'forward' },
+                { id: 'btn-reverse', key: 'backward' }
+            ];
+
+            touchControls.forEach(ctrl => {
+                const element = document.getElementById(ctrl.id);
+                
+                const startEvent = (e) => {
+                    e.preventDefault();
+                    initAudio();
+                    input[ctrl.key] = true;
+                };
+                
+                const endEvent = (e) => {
+                    e.preventDefault();
+                    input[ctrl.key] = false;
+                };
+
+                element.addEventListener('touchstart', startEvent, { passive: false });
+                element.addEventListener('touchend', endEvent, { passive: false });
+                element.addEventListener('mousedown', startEvent);
+                element.addEventListener('mouseup', endEvent);
+                element.addEventListener('mouseleave', endEvent);
+            });
+
+            // Orbit Drag mechanics
+            window.addEventListener('mousedown', (e) => {
+                if (e.target.closest('button') || e.target.closest('#canvas-container') === null) return;
+                isMouseDown = true;
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isMouseDown) return;
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+
+                orbitAngleX -= deltaX * 0.007;
+                orbitAngleY = Math.max(0.1, Math.min(Math.PI / 2 - 0.05, orbitAngleY + deltaY * 0.007));
+
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            window.addEventListener('mouseup', () => { isMouseDown = false; });
+            
+            // Touch Swipe Drag
+            window.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1 && !e.target.closest('button')) {
+                    isMouseDown = true;
+                    previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                }
+            }, { passive: true });
+
+            window.addEventListener('touchmove', (e) => {
+                if (!isMouseDown || e.touches.length !== 1) return;
+                const deltaX = e.touches[0].clientX - previousMousePosition.x;
+                const deltaY = e.touches[0].clientY - previousMousePosition.y;
+
+                orbitAngleX -= deltaX * 0.007;
+                orbitAngleY = Math.max(0.1, Math.min(Math.PI / 2 - 0.05, orbitAngleY + deltaY * 0.007));
+
+                previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            }, { passive: true });
+
+            window.addEventListener('touchend', () => { isMouseDown = false; });
+        }
+
+        // --- CAMERA CYCLE HANDLING ---
+        function cycleCameraMode() {
+            cameraMode = (cameraMode + 1) % 3;
+            const textEl = document.getElementById('camera-text');
+            if (cameraMode === 0) {
+                textEl.textContent = "Chase Back";
+            } else if (cameraMode === 1) {
+                textEl.textContent = "Chase Front";
+            } else {
+                textEl.textContent = "Orbit View";
+            }
+        }
+
+        // --- CHASSIS REPAIR ---
+        function restoreChassis() {
+            if (!busBodyMesh) return;
+            chassisIntegrity = 1.0;
+            updateDamageUI();
+
+            const posAttr = busBodyMesh.geometry.attributes.position;
+            for (let i = 0; i < posAttr.count; i++) {
+                deformedVertices[i].copy(originalVertices[i]);
+                posAttr.setXYZ(i, originalVertices[i].x, originalVertices[i].y, originalVertices[i].z);
+            }
+            posAttr.needsUpdate = true;
+            busBodyMesh.geometry.computeVertexNormals();
+
+            const alertBox = document.getElementById('impact-alert');
+            alertBox.className = "bg-green-600 text-white font-bold px-6 py-2.5 rounded-full shadow-2xl border border-green-500 transform scale-100 transition-all duration-150 text-sm flex items-center gap-2";
+            alertBox.innerHTML = '<i class="fa-solid fa-circle-check"></i> CHASSIS RESTORED TO PRISTINE!';
+            
+            setTimeout(() => {
+                alertBox.className = "bg-red-600/90 text-white font-bold px-6 py-2.5 rounded-full shadow-2xl border border-red-500 transform scale-0 transition-all duration-150 text-sm flex items-center gap-2";
+            }, 2000);
+        }
+
+        // --- RESPAWN / RECOVER SYSTEM (NO FLOATING) ---
+        function resetBusPosition() {
+            if (!busGroup) return;
+
+            // Spawn flat on asphalt (Central crossroad intersection)
+            const groundY = getHeight(0, 15);
+            
+            position.set(0, groundY + 1.25, 15);
+            velocity.set(0, 0, 0);
+            rotationY = Math.PI; // Look straight South
+            pitch = 0;
+            roll = 0;
+
+            busGroup.position.copy(position);
+            const quatYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotationY);
+            busGroup.quaternion.copy(quatYaw);
+
+            const alertBox = document.getElementById('impact-alert');
+            alertBox.className = "bg-amber-500 text-white font-bold px-6 py-2.5 rounded-full shadow-2xl border border-amber-400 transform scale-100 transition-all duration-150 text-sm flex items-center gap-2";
+            alertBox.innerHTML = '<i class="fa-solid fa-arrows-rotate animate-spin"></i> BUS POSITION RESET FLUSH!';
+            
+            setTimeout(() => {
+                alertBox.className = "bg-red-600/90 text-white font-bold px-6 py-2.5 rounded-full shadow-2xl border border-red-500 transform scale-0 transition-all duration-150 text-sm flex items-center gap-2";
+            }, 2000);
+        }
+
+        // --- SOFT-BODY DEFORMATION ---
+        function deformChassis(impactPointLocal, forceVectorLocal, forceMagnitude) {
+            if (!busBodyMesh) return;
+
+            const stiffness = 0.82; // Balance metal hardness
+            const damageFactor = Math.min(0.85, forceMagnitude * 0.14);
+            
+            let vertChanged = false;
+            const posAttr = busBodyMesh.geometry.attributes.position;
+            const tempVert = new THREE.Vector3();
+
+            for (let i = 0; i < posAttr.count; i++) {
+                tempVert.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+                
+                const dist = tempVert.distanceTo(impactPointLocal);
+                if (dist < 2.0) {
+                    const strength = (2.0 - dist) / 2.0;
+                    const deformAmount = forceVectorLocal.clone().multiplyScalar(strength * damageFactor * (1.0 - stiffness));
+                    
+                    tempVert.add(deformAmount);
+
+                    // Physical limits to prevent inside-out clipping
+                    const distFromOriginal = tempVert.distanceTo(originalVertices[i]);
+                    if (distFromOriginal > 1.2) {
+                        const clampedDir = tempVert.clone().sub(originalVertices[i]).normalize();
+                        tempVert.copy(originalVertices[i]).addScaledVector(clampedDir, 1.2);
+                    }
+
+                    deformedVertices[i].copy(tempVert);
+                    posAttr.setXYZ(i, tempVert.x, tempVert.y, tempVert.z);
+                    vertChanged = true;
+                }
+            }
+
+            if (vertChanged) {
+                posAttr.needsUpdate = true;
+                busBodyMesh.geometry.computeVertexNormals();
+                
+                chassisIntegrity = Math.max(0.1, chassisIntegrity - (forceMagnitude * 0.038));
+                updateDamageUI();
+
+                // Spark Visuals
+                triggerCrashSparks(busGroup.localToWorld(impactPointLocal.clone()), forceMagnitude);
+                
+                playCollisionSound(Math.min(1.0, forceMagnitude * 0.22));
+                triggerCrashUIPopup();
+            }
+        }
+
+        function triggerCrashSparks(worldPos, force) {
+            const count = Math.min(30, Math.floor(force * 6));
+            const particleGeo = new THREE.BufferGeometry();
+            const positions = [];
+            const velocities = [];
+
+            for (let i = 0; i < count; i++) {
+                positions.push(worldPos.x, worldPos.y, worldPos.z);
+                velocities.push(
+                    (Math.random() - 0.5) * 8,
+                    (Math.random() * 6) + 2,
+                    (Math.random() - 0.5) * 8
+                );
+            }
+
+            particleGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            
+            const particleMat = new THREE.PointsMaterial({
+                color: 0xffaa44,
+                size: 0.25,
+                transparent: true,
+                opacity: 0.9,
+                blending: THREE.AdditiveBlending
+            });
+
+            const particles = new THREE.Points(particleGeo, particleMat);
+            scene.add(particles);
+
+            particleSystems.push({
+                system: particles,
+                velocities: velocities,
+                age: 0,
+                maxAge: 0.8
+            });
+        }
+
+        function updateDamageUI() {
+            const pct = Math.round((1.0 - chassisIntegrity) * 100);
+            const textElement = document.getElementById('damage-text');
+            const barElement = document.getElementById('damage-bar');
+
+            textElement.textContent = `${pct}%`;
+            barElement.style.width = `${pct}%`;
+
+            if (pct < 30) {
+                textElement.className = "text-green-400";
+                barElement.className = "bg-gradient-to-r from-green-500 to-emerald-400 h-full w-0 transition-all duration-300";
+            } else if (pct < 65) {
+                textElement.className = "text-yellow-400";
+                barElement.className = "bg-gradient-to-r from-yellow-500 to-amber-500 h-full w-0 transition-all duration-300";
+            } else {
+                textElement.className = "text-red-500 font-bold animate-pulse";
+                barElement.className = "bg-gradient-to-r from-red-600 to-rose-500 h-full w-0 transition-all duration-300";
+            }
+        }
+
+        function triggerCrashUIPopup() {
+            const alertBox = document.getElementById('impact-alert');
+            alertBox.className = "bg-red-600/95 text-white font-bold px-6 py-2.5 rounded-full shadow-2xl border border-red-500 transform scale-100 transition-all duration-150 text-sm flex items-center gap-2";
+            
+            setTimeout(() => {
+                alertBox.className = "bg-red-600/90 text-white font-bold px-6 py-2.5 rounded-full shadow-2xl border border-red-500 transform scale-0 transition-all duration-150 text-sm flex items-center gap-2";
+            }, 1200);
+        }
+
+        // --- DYNAMIC COLLISIONS (TERRAIN, BOULDERS, SKYSCRAPERS) ---
+        function evaluateCollisions(delta) {
+            const localBox = new THREE.Box3(
+                new THREE.Vector3(-BUS_WIDTH/2, -BUS_HEIGHT/2, -BUS_LENGTH/2),
+                new THREE.Vector3(BUS_WIDTH/2, BUS_HEIGHT/2, BUS_LENGTH/2)
+            );
+
+            // 1. Terrain Ground Contact Check
+            const samples = [
+                new THREE.Vector3(-BUS_WIDTH/2, -BUS_HEIGHT/2, -BUS_LENGTH/2),
+                new THREE.Vector3(BUS_WIDTH/2, -BUS_HEIGHT/2, -BUS_LENGTH/2),
+                new THREE.Vector3(-BUS_WIDTH/2, -BUS_HEIGHT/2, BUS_LENGTH/2),
+                new THREE.Vector3(BUS_WIDTH/2, -BUS_HEIGHT/2, BUS_LENGTH/2),
+                new THREE.Vector3(0, -BUS_HEIGHT/2, 0)
+            ];
+
+            samples.forEach(sample => {
+                const worldPos = sample.clone().applyMatrix4(busGroup.matrixWorld);
+                const terrainY = getHeight(worldPos.x, worldPos.z);
+                
+                if (worldPos.y < terrainY + 0.1) {
+                    const penetrationDepth = (terrainY + 0.1) - worldPos.y;
+                    
+                    if (penetrationDepth > 0.35) {
+                        const localVel = busGroup.worldToLocal(velocity.clone());
+                        const speed = localVel.length();
+                        
+                        if (speed > 1.5) {
+                            const localImpact = sample.clone();
+                            const localForce = new THREE.Vector3(0, 1, 0).applyQuaternion(busGroup.quaternion.clone().invert());
+                            deformChassis(localImpact, localForce, speed * 1.5);
+                        }
+                    }
+                }
+            });
+
+            // 2. Solid Boulder Contact
+            boulders.forEach(boulder => {
+                const dist = position.distanceTo(boulder.position);
+                const collisionThreshold = boulder.radius + (BUS_LENGTH / 2.2);
+
+                if (dist < collisionThreshold) {
+                    const localBoulderPos = busGroup.worldToLocal(boulder.position.clone());
+                    
+                    const closestPoint = localBoulderPos.clone().clamp(localBox.min, localBox.max);
+                    const worldClosestPoint = busGroup.localToWorld(closestPoint.clone());
+                    const worldDist = worldClosestPoint.distanceTo(boulder.position);
+
+                    if (worldDist < boulder.radius) {
+                        const collisionNormal = worldClosestPoint.clone().sub(boulder.position).normalize();
+                        const penetration = boulder.radius - worldDist;
+
+                        position.addScaledVector(collisionNormal, penetration + 0.05); // push out clean
+                        
+                        const relativeVelocity = velocity.clone();
+                        const speedAlongNormal = relativeVelocity.dot(collisionNormal);
+
+                        if (speedAlongNormal < 0) {
+                            const restitution = 0.25; // bouncy slide
+                            const impulseScalar = -(1 + restitution) * speedAlongNormal;
+                            velocity.addScaledVector(collisionNormal, impulseScalar);
+
+                            const impactSpeed = Math.abs(speedAlongNormal);
+                            if (impactSpeed > 1.2) {
+                                const localImpactPoint = busGroup.worldToLocal(worldClosestPoint.clone());
+                                const localForceVec = busGroup.worldToLocal(collisionNormal.clone().add(position)).normalize();
+                                deformChassis(localImpactPoint, localForceVec, impactSpeed * 2.5);
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 3. Skyscraper Box-Chassis Collisions
+            const busWorldBox = new THREE.Box3().setFromObject(busBodyMesh);
+
+            cityBuildings.forEach(building => {
+                const dist = position.distanceTo(building.center);
+                // Broadphase bounding check
+                if (dist < building.radius + (BUS_LENGTH / 2)) {
+                    if (building.box.intersectsBox(busWorldBox)) {
+                        // Advanced Sliding Resolution
+                        const closestPointOnAABB = new THREE.Vector3().copy(position).clamp(building.box.min, building.box.max);
+                        const pushDir = position.clone().sub(closestPointOnAABB);
+                        pushDir.y = 0; // Lock vertical climbing on buildings
+                        const pushDist = pushDir.length();
+
+                        const safetyRadius = 1.6; 
+                        if (pushDist < safetyRadius) {
+                            const pushAmt = safetyRadius - pushDist;
+                            const normal = pushDir.normalize();
+
+                            // Force clean slider displacement
+                            position.addScaledVector(normal, pushAmt + 0.05);
+                            
+                            // Bounce velocity away with slide preservation
+                            const dotP = velocity.dot(normal);
+                            if (dotP < 0) {
+                                velocity.addScaledVector(normal, -dotP * 1.5); // clean slide bounce
+                                const speed = Math.abs(dotP);
+                                if (speed > 1.0) {
+                                    const worldImpactPoint = position.clone().addScaledVector(normal, -1.2);
+                                    const localImpact = busGroup.worldToLocal(worldImpactPoint);
+                                    const localForceVec = busGroup.worldToLocal(normal.clone().negate()).normalize();
+                                    deformChassis(localImpact, localForceVec, speed * 2.8);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- WINDOW RESIZING ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- ENGINE FRAME LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            let delta = clock.getDelta();
+            if (delta > 0.08) delta = 0.08;
+
+            updateParticles(delta);
+            updateBusPhysics(delta);
+            evaluateCollisions(delta);
+            updateCameraPosition();
+
+            renderer.render(scene, camera);
+        }
+
+        function updateParticles(delta) {
+            for (let i = particleSystems.length - 1; i >= 0; i--) {
+                const pData = particleSystems[i];
+                pData.age += delta;
+
+                if (pData.age >= pData.maxAge) {
+                    scene.remove(pData.system);
+                    pData.system.geometry.dispose();
+                    pData.system.material.dispose();
+                    particleSystems.splice(i, 1);
+                } else {
+                    const posAttr = pData.system.geometry.attributes.position;
+                    const arr = posAttr.array;
+                    
+                    for (let j = 0; j < posAttr.count; j++) {
+                        const idx = j * 3;
+                        pData.velocities[idx + 1] -= 9.8 * delta; // Gravity drift
+                        
+                        arr[idx] += pData.velocities[idx] * delta;
+                        arr[idx + 1] += pData.velocities[idx + 1] * delta;
+                        arr[idx + 2] += pData.velocities[idx + 2] * delta;
+                    }
+                    posAttr.needsUpdate = true;
+                    pData.system.material.opacity = 1.0 - (pData.age / pData.maxAge);
+                }
+            }
+        }
+
+        function updateBusPhysics(delta) {
+            // Steering wheels turning
+            let targetSteer = 0;
+            if (input.left) targetSteer = 0.52;
+            if (input.right) targetSteer = -0.52;
+            steeringAngle = THREE.MathUtils.lerp(steeringAngle, targetSteer, delta * 7.5);
+
+            // Driving Torque force
+            let motorForce = 0;
+            if (input.forward) motorForce = 15.5; 
+            if (input.backward) motorForce = -8.5; 
+
+            let currentBrake = 0.0;
+            if (input.handbrake) {
+                currentBrake = 26.0;
+                motorForce = 0;
+            }
+
+            const localVel = velocity.clone().applyQuaternion(busGroup.quaternion.clone().invert());
+            
+            // Road sliding and grip traction
+            const gripFrictionX = -localVel.x * 6.0; 
+            const rollResistanceY = -localVel.z * 0.32; 
+
+            let accelZ = motorForce + rollResistanceY;
+            if (currentBrake > 0) {
+                accelZ -= Math.sign(localVel.z) * currentBrake;
+            }
+
+            localVel.z += accelZ * delta;
+            localVel.x += gripFrictionX * delta;
+
+            const turnRadiusFactor = Math.abs(localVel.z) * 0.095;
+            const targetYawSpeed = steeringAngle * turnRadiusFactor * Math.sign(localVel.z);
+            rotationY += targetYawSpeed * delta;
+
+            const currentYawQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotationY);
+            velocity.copy(localVel).applyQuaternion(currentYawQuat);
+
+            // Suspension logic: wheels vertical spring placement
+            let avgTerrainHeight = 0;
+            let totalHeightChecks = 0;
+            
+            wheels.forEach(wheel => {
+                const wheelWorld = wheel.initialOffset.clone().applyMatrix4(busGroup.matrixWorld);
+                const localTerrainY = getHeight(wheelWorld.x, wheelWorld.z);
+                avgTerrainHeight += localTerrainY;
+                totalHeightChecks++;
+
+                const currentHeight = wheelWorld.y - 0.5;
+                const penetration = localTerrainY - currentHeight;
+
+                if (penetration > 0) {
+                    const springStiffness = 68.0;
+                    const springPush = penetration * springStiffness;
+                    velocity.y += springPush * delta;
+                }
+            });
+
+            avgTerrainHeight /= totalHeightChecks;
+
+            // Gravity constant pull down
+            velocity.y -= 13.5 * delta;
+
+            // Move the coordinates
+            position.addScaledVector(velocity, delta);
+
+            // Floor snapping checks (NO FLOATING AT START)
+            const floorHeight = getHeight(position.x, position.z) + 1.25;
+            if (position.y < floorHeight) {
+                position.y = floorHeight;
+                velocity.y = 0;
+            }
+
+            // Map Bounds wall
+            const maxBound = (TERRAIN_SIZE / 2) - 4;
+            if (Math.abs(position.x) > maxBound) {
+                position.x = Math.sign(position.x) * maxBound;
+                velocity.x *= -0.5;
+            }
+            if (Math.abs(position.z) > maxBound) {
+                position.z = Math.sign(position.z) * maxBound;
+                velocity.z *= -0.5;
+            }
+
+            // Mountain slopes pitch and roll
+            const step = 2.0;
+            const forwardY = getHeight(position.x, position.z + step) - getHeight(position.x, position.z - step);
+            const rightY = getHeight(position.x + step, position.z) - getHeight(position.x - step, position.z);
+
+            const targetPitch = -Math.atan2(forwardY, step * 2);
+            const targetRoll = Math.atan2(rightY, step * 2);
+
+            pitch = THREE.MathUtils.lerp(pitch, targetPitch, delta * 5.5);
+            roll = THREE.MathUtils.lerp(roll, targetRoll, delta * 5.5);
+
+            // Group Position & rotation mapping
+            busGroup.position.copy(position);
+
+            const quatYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotationY);
+            const quatPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), pitch);
+            const quatRoll = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), roll);
+
+            busGroup.quaternion.copy(quatYaw).multiply(quatPitch).multiply(quatRoll);
+
+            // Rotational tire mapping
+            const speedMagnitude = localVel.z;
+            wheelRotation += (speedMagnitude / 0.8) * delta; 
+
+            wheels.forEach(wheel => {
+                if (wheel.isFront) {
+                    wheel.group.rotation.y = steeringAngle * wheel.steeringSign;
+                } else {
+                    wheel.group.rotation.y = 0;
+                }
+                wheel.group.children[0].rotation.x = wheelRotation;
+                wheel.group.children[1].rotation.x = wheelRotation; // hubcap
+                
+                // Spring travel visual displacement
+                const wheelWorld = wheel.initialOffset.clone().applyMatrix4(busGroup.matrixWorld);
+                const terrainY = getHeight(wheelWorld.x, wheelWorld.z);
+                const travel = Math.min(0.4, Math.max(-0.4, terrainY - (wheelWorld.y - 0.5)));
+                wheel.group.position.y = wheel.initialOffset.y + travel;
+            });
+
+            // --- ADVANCED ANTI-STUCK SYSTEM IMPLEMENTATION ---
+            const isTryingToMove = input.forward || input.backward || input.left || input.right;
+            const isStopped = Math.abs(speedMagnitude) < 0.15;
+
+            if (isTryingToMove && isStopped) {
+                stuckTimer += delta;
+                if (stuckTimer > 1.2) {
+                    // Trigger dynamic escape hop!
+                    position.y += 1.8;
+                    const backDir = new THREE.Vector3(0, 0, -1).applyQuaternion(busGroup.quaternion);
+                    position.addScaledVector(backDir, 1.8);
+                    velocity.set(0, 2.5, 0); // upward momentum pop
+                    pitch = 0;
+                    roll = 0;
+                    stuckTimer = 0;
+
+                    // Display alert popup
+                    const alertBox = document.getElementById('impact-alert');
+                    alertBox.className = "bg-green-600 text-white font-bold px-6 py-2.5 rounded-full shadow-2xl border border-green-500 transform scale-100 transition-all duration-150 text-sm flex items-center gap-2 pointer-events-auto";
+                    alertBox.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles animate-pulse"></i> AUTO-RESCUE ESCAPE JUMP!';
+                    setTimeout(() => {
+                        alertBox.className = "bg-red-600/90 text-white font-bold px-6 py-2.5 rounded-full shadow-2xl border border-red-500 transform scale-0 transition-all duration-150 text-sm flex items-center gap-2";
+                    }, 1500);
+                }
+            } else {
+                stuckTimer = 0;
+            }
+
+            // Flip / roll assistance detection
+            const isTilted = Math.abs(pitch) > 1.0 || Math.abs(roll) > 1.0;
+            if (isTilted) {
+                upsideDownTimer += delta;
+                if (upsideDownTimer > 1.0) {
+                    // Auto right alignment
+                    pitch = 0;
+                    roll = 0;
+                    position.y += 1.6;
+                    velocity.set(0, 1.5, 0);
+                    upsideDownTimer = 0;
+
+                    const alertBox = document.getElementById('impact-alert');
+                    alertBox.className = "bg-cyan-600 text-white font-bold px-6 py-2.5 rounded-full shadow-2xl border border-cyan-500 transform scale-100 transition-all duration-150 text-sm flex items-center gap-2 pointer-events-auto";
+                    alertBox.innerHTML = '<i class="fa-solid fa-arrows-up-to-line animate-bounce"></i> AUTO-RIGHTED UPRIGHT!';
+                    setTimeout(() => {
+                        alertBox.className = "bg-red-600/90 text-white font-bold px-6 py-2.5 rounded-full shadow-2xl border border-red-500 transform scale-0 transition-all duration-150 text-sm flex items-center gap-2";
+                    }, 1500);
+                }
+            } else {
+                upsideDownTimer = 0;
+            }
+
+            // Dashboard Metrics UI
+            const absSpeedKmh = Math.round(Math.abs(speedMagnitude) * 3.6);
+            document.getElementById('speedometer').textContent = absSpeedKmh;
+
+            const gearIndicator = document.getElementById('gear-indicator');
+            if (absSpeedKmh === 0) {
+                gearIndicator.textContent = 'N';
+                gearIndicator.className = 'text-xl md:text-2xl font-bold font-mono text-slate-400';
+            } else if (speedMagnitude < 0) {
+                gearIndicator.textContent = 'R';
+                gearIndicator.className = 'text-xl md:text-2xl font-bold font-mono text-red-400';
+            } else {
+                const gear = Math.min(5, Math.floor(absSpeedKmh / 14) + 1);
+                gearIndicator.textContent = `D${gear}`;
+                gearIndicator.className = 'text-xl md:text-2xl font-bold font-mono text-green-400';
+            }
+
+            updateEngineSound(Math.abs(speedMagnitude));
+        }
+
+        // --- CAMERA CONFIGS ---
+        function updateCameraPosition() {
+            if (cameraMode === 0) {
+                // CHASE CAMERA (LOOKING AT THE BACK)
+                const chaseOffset = new THREE.Vector3(0, 4.0, -11.0); 
+                const targetWorldOffset = chaseOffset.applyMatrix4(busGroup.matrixWorld);
+
+                camera.position.lerp(targetWorldOffset, 0.08);
+                const lookTarget = position.clone().add(new THREE.Vector3(0, 0.5, 0));
+                camera.lookAt(lookTarget);
+            } else if (cameraMode === 1) {
+                // CHASE CAMERA FRONT (LOOKING STRAIGHT AT FRONT OF THE BUS)
+                const frontOffset = new THREE.Vector3(0, 3.2, 11.0); 
+                const targetWorldOffset = frontOffset.applyMatrix4(busGroup.matrixWorld);
+
+                camera.position.lerp(targetWorldOffset, 0.08);
+                const lookTarget = position.clone().add(new THREE.Vector3(0, 0.4, 0));
+                camera.lookAt(lookTarget);
+            } else {
+                // FREE ORBIT MODE
+                const offsetX = orbitRadius * Math.sin(orbitAngleX) * Math.cos(orbitAngleY);
+                const offsetY = orbitRadius * Math.sin(orbitAngleY);
+                const offsetZ = orbitRadius * Math.cos(orbitAngleX) * Math.cos(orbitAngleY);
+
+                const targetCamPos = position.clone().add(new THREE.Vector3(offsetX, offsetY, offsetZ));
+                camera.position.lerp(targetCamPos, 0.1);
+                camera.lookAt(position.clone().add(new THREE.Vector3(0, 0.3, 0)));
+            }
+        }
+    </script>
+</body>
+</html>
